@@ -3,16 +3,9 @@ import json
 import math
 import time
 import pickle
-import numpy as np
-import sklearn
-import re
-import matplotlib.pyplot as plt
-from matplotlib.dates import YearLocator, MonthLocator, DateFormatter
 from datetime import datetime
 import functools
-from stop_words import get_stop_words
-import Stemmer
-from sklearn.feature_extraction.text import CountVectorizer
+import sys
 import config
 
 posts_url = 'https://api.vk.com/method/wall.get?owner_id={}&\
@@ -90,49 +83,9 @@ def download_posts(ownder_id, max_iter=None):
     print(len(result_posts), 'Posts added')
     return result_posts
 
-
-def read_posts(owner_id):
-    filename = 'data/{}.pkl'.format(owner_id)
-    with open(filename, 'rb') as f:
-        posts = pickle.load(f)
-    return posts
-
-
-def generate_dataset(posts):
-    texts = [post['text'] for post in posts]
-    likes = [post['likes'] for post in posts]
-    return texts, likes
-
-
-def clear_texts(texts):
-    clear_texts = []
-    stop_words = get_stop_words('ru')
-    stemmer = Stemmer.Stemmer('russian')
-
-    for text in texts:
-        text = text.lower()
-        text = re.sub('[^а-я]', ' ', text)
-        text = text.split()
-        text = [t for t in text if t not in stop_words]
-        text = stemmer.stemWords(text)
-        clear_texts.append(' '.join(text))
-    return clear_texts
-
-
-def plot_date_likes(posts):
-    fig, ax = plt.subplots()
-
-    years = YearLocator()   # every year
-    months = MonthLocator()  # every month
-    yearsFmt = DateFormatter('%Y')
-
-    ax.xaxis.set_major_locator(years)
-    ax.xaxis.set_major_formatter(yearsFmt)
-    ax.xaxis.set_minor_locator(months)
-
-    ax.set_xlabel('Year')
-    ax.set_ylabel('Likes')
-    ax.set_title('Horror stories')
-
-    ax.plot_date([datetime.fromtimestamp(p['date']) for p in posts],
-                 [p['likes'] for p in posts])
+if __name__ == '__main__':
+    if len(sys.argv) > 1:
+        owner_id = sys.argv[1]
+        download_posts(owner_id)
+    else:
+        download_posts(config.OWNER_ID)
