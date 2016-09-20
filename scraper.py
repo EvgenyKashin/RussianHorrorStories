@@ -54,6 +54,19 @@ def parse_posts(posts):
              'date': p['date']} for p in posts]
 
 
+def drop_duplicates(posts):
+    unique_texts = set()
+    unique_posts = []
+
+    for post in posts[::-1]:
+        if post['text'] in unique_texts:
+            continue
+        else:
+            unique_posts.append(post)
+            unique_texts.add(post['text'])
+    return unique_posts
+
+
 def download_posts(ownder_id, max_iter=None):
     result_posts = []
     post = get_posts(ownder_id, 1)
@@ -76,12 +89,21 @@ def download_posts(ownder_id, max_iter=None):
                                       key=lambda x: x['date'])['date'])
     date_cond = functools.partial(date_condition, min_date)
     result_posts = list(filter(date_cond, result_posts))
+    result_posts = drop_duplicates(result_posts)
 
     filename = 'data/{}.pkl'.format(ownder_id)
     with open(filename, 'wb') as f:
         pickle.dump(result_posts, f)
     print(len(result_posts), 'Posts added')
     return result_posts
+
+
+def read_posts(owner_id):
+    filename = 'data/{}.pkl'.format(owner_id)
+    with open(filename, 'rb') as f:
+        posts = pickle.load(f)
+    return posts
+
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:
