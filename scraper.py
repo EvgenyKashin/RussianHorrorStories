@@ -7,6 +7,7 @@ from datetime import datetime
 import functools
 import sys
 import logging
+import glob
 import config
 
 logging.basicConfig(level=logging.DEBUG)
@@ -78,19 +79,23 @@ def filter_by_date(posts, min_date):
     return posts_filtered
 
 
-def drop_duplicates(posts):
+def drop_duplicates(posts, keep_first=True):
     global posts_count
     unique_texts = set()
     unique_posts = []
 
     logger.debug('Dropping duplicates posts..')
-    for post in posts[::-1]:
+    if keep_first:
+        posts = posts[::-1]
+    for post in posts:
         if post['text'] in unique_texts:
             continue
         else:
             unique_posts.append(post)
             unique_texts.add(post['text'])
 
+    if keep_first:
+        posts = posts[::-1]
     logger.debug('{:.2f}% dropped'.format(
                 (len(posts) - len(unique_posts)) / posts_count * 100))
     return unique_posts
@@ -146,6 +151,24 @@ def download_posts(domain, max_iter=None, suffix='', save=True):
     return result_posts
 
 
+def drop_duplicates_in_files():
+    global posts_count
+    result_posts = []
+
+    for fn in glob.glob('./data/*.pkl'):
+        if 'all_posts' in fn:
+            continue
+        posts = read_posts(filename=fn)
+        result_posts.extend(posts)
+
+    posts_count = len(result_posts)
+    result_posts = drop_duplicates(result_posts)
+    filename = 'data/all_posts_filtered.pkl'
+    with open(filename, 'wb') as f:
+        pickle.dump(result_posts, f)
+    logger.info('{} total posts added'.format(len(result_posts)))
+
+
 def download_from_groups(domains):
     # with minimum constraints
     global posts_count
@@ -163,8 +186,12 @@ def download_from_groups(domains):
     logger.info('{} total posts added'.format(len(result_posts)))
 
 
-def read_posts(domain):
-    filename = 'data/{}.pkl'.format(domain)
+def read_posts(domain=None, filename=None):
+    if not filename:
+        if domain:
+            filename = 'data/{}.pkl'.format(domain)
+        else:
+            raise Exception('Wrong arguments')
     with open(filename, 'rb') as f:
         posts = pickle.load(f)
     return posts
@@ -177,4 +204,5 @@ if __name__ == '__main__':
     else:
         # download_from_groups(config.DOMAINS)
         #  download_posts(config.DOMAINS[4], suffix='_2')
-        download_from_groups(config.DOMAINS)
+        # download_from_groups(config.DOMAINS)
+        drop_duplicates_in_files()
