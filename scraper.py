@@ -10,7 +10,8 @@ import logging
 import config
 
 logging.basicConfig(level=logging.DEBUG)
-loger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
+# logger.setLevel(logging.DEBUG)
 logging.getLogger('requests').setLevel(logging.ERROR)
 
 posts_url = 'https://api.vk.com/method/wall.get?owner_id={}&\
@@ -37,9 +38,9 @@ def text_post_condition(post):
     return post['post_type'] == 'post' and\
            len(post['text']) > config.MIN_CHARACTERS and\
            'http' not in post['text'] and\
-           (not post.get('attachments') or
+           (post.get('attachments') is None or
             len([att for att in post['attachments']
-                if att['type'] == 'video'])) == 0
+                 if att['type'] == 'video']) == 0)
 
 
 def parse_posts(posts, domain):
@@ -70,9 +71,9 @@ def filter_by_date(posts, min_date):
     global posts_count
 
     date_cond = functools.partial(date_condition, min_date)
-    loger.debug('Filtering by date..')
+    logger.debug('Filtering by date..')
     posts_filtered = list(filter(date_cond, posts))
-    loger.debug('{:.2f}% dropped'.format(
+    logger.debug('{:.2f}% dropped'.format(
                 (len(posts) - len(posts_filtered)) / posts_count * 100))
     return posts_filtered
 
@@ -82,7 +83,7 @@ def drop_duplicates(posts):
     unique_texts = set()
     unique_posts = []
 
-    loger.debug('Dropping duplicates posts..')
+    logger.debug('Dropping duplicates posts..')
     for post in posts[::-1]:
         if post['text'] in unique_texts:
             continue
@@ -90,7 +91,7 @@ def drop_duplicates(posts):
             unique_posts.append(post)
             unique_texts.add(post['text'])
 
-    loger.debug('{:.2f}% dropped'.format(
+    logger.debug('{:.2f}% dropped'.format(
                 (len(posts) - len(unique_posts)) / posts_count * 100))
     return unique_posts
 
@@ -100,48 +101,66 @@ outliers_count = 0
 posts_count = 0
 
 
-def download_posts(domain, max_iter=None):
+def download_posts(domain, max_iter=None, suffix='', save=True):
     global not_texts_count, outliers_count, posts_count
     not_texts_count, outliers_count, posts_count = 0, 0, 0
     start_time = time.time()
 
-    loger.info('Downloading from {}'.format(domain))
+    logger.info('Downloading from {}'.format(domain))
     result_posts = []
     post = get_posts(domain, 1)
     posts_count = int(post['response']['count'])
-    loger.info('{} total posts'.format(posts_count))
+    logger.info('{} total posts'.format(posts_count))
     iteration = math.ceil(posts_count / 100)
     if max_iter:
         iteration = min(max_iter, iteration)
 
     for i in range(iteration):
-        if i % 10 == 0:
-            loger.info('{:.2f}%'.format(i / iteration * 100))
+        if i % 20 == 0:
+            logger.info('{:.2f}%'.format(i / iteration * 100))
         posts = get_posts(domain, 100, i * 100)
-        posts = parse_posts(posts['response']['items'], domain)
+        posts = parse_posts(posts['response']['items'], domain + suffix)
         result_posts.extend(posts)
-        time.sleep(0.33)
+        time.sleep(0.25)
 
     # filterig by date
     min_date = datetime.fromtimestamp(min(result_posts,
                                       key=lambda x: x['date'])['date'])
-    loger.debug('Min date: {}'.format(min_date))
+    logger.debug('Min date: {}'.format(min_date))
     result_posts = filter_by_date(result_posts, min_date)
     result_posts = drop_duplicates(result_posts)
 
-    loger.debug('Filtering: {:.2f}% outliers, {:.2f}% not text'.format(
+    logger.debug('Filtering: {:.2f}% outliers, {:.2f}% not text'.format(
                 outliers_count / posts_count * 100,
                 not_texts_count / posts_count * 100))
 
-    filename = 'data/{}.pkl'.format(domain)
-    with open(filename, 'wb') as f:
-        pickle.dump(result_posts, f)
+    if save:
+        filename = 'data/{}.pkl'.format(domain + suffix)
+        with open(filename, 'wb') as f:
+            pickle.dump(result_posts, f)
 
-    loger.info('{} posts from {} added. Domain: {}'.format(len(result_posts),
-               posts_count, domain))
-    loger.debug('Total time: {}'.format(round(time.time() - start_time)))
+    logger.info('{} posts from {} added. Domain: {}'.format(len(result_posts),
+                posts_count, domain))
+    logger.debug('Total time: {} sec'.format(round(time.time() - start_time)))
 
     return result_posts
+
+
+def download_from_groups(domains):
+    # with minimum constraints
+    global posts_count
+
+    result_posts = []
+    for domain in domains:
+        posts = download_posts(domain, save=False)
+        result_posts.extend(posts)
+
+    posts_count = len(result_posts)
+    result_posts = drop_duplicates(result_posts)
+    filename = 'data/all_posts.pkl'
+    with open(filename, 'wb') as f:
+        pickle.dump(result_posts, f)
+    logger.info('{} total posts added'.format(len(result_posts)))
 
 
 def read_posts(domain):
@@ -156,4 +175,6 @@ if __name__ == '__main__':
         domain = sys.argv[1]
         download_posts(domain)
     else:
-        download_posts(config.DOMAINS[4])
+        # download_from_groups(config.DOMAINS)
+        #  download_posts(config.DOMAINS[4], suffix='_2')
+        download_from_groups(config.DOMAINS)
