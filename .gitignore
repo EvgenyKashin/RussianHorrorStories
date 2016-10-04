@@ -93,3 +93,13 @@ private.py
 
 # files with posts
 *.pkl
+
+# csv files
+*.csv
+*.csv.gz
+
+# txt files
+*.txt
+
+# bin files
+models_bin

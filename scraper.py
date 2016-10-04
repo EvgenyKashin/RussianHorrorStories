@@ -8,6 +8,7 @@ import functools
 import sys
 import logging
 import glob
+from sklearn.preprocessing import StandardScaler
 import config
 
 logging.basicConfig(level=logging.DEBUG)
@@ -151,19 +152,52 @@ def download_posts(domain, max_iter=None, suffix='', save=True):
     return result_posts
 
 
-def drop_duplicates_in_files():
+def scale_posts_likes(posts, max_scaled_likes=7):
+    likes = [[post['likes']] for post in posts]
+    scaler = StandardScaler()
+    likes = scaler.fit_transform(likes)
+
+    logger.debug('Scaling likes..')
+    for i in range(len(posts)):
+        posts[i]['likes'] = likes[i]
+    # filtering
+    posts = [post for post in posts if post['likes'] <= 7]
+    return posts
+
+
+def add_labels(posts):
+    sorted_posts = sorted(posts, key=lambda p: p['likes'])
+    q1 = len(posts) // 4
+    q3 = len(posts) // 4 * 3
+
+    for i in range(len(posts)):
+        if i < q1:
+            sorted_posts[i]['label'] = 0
+        elif i < q3:
+            sorted_posts[i]['label'] = 1
+        else:
+            sorted_posts[i]['label'] = 2
+    return sorted_posts
+
+
+def drop_duplicates_and_scale(pattern='./data/*.pkl', scale=False,
+                              labels=False):
     global posts_count
     result_posts = []
 
-    for fn in glob.glob('./data/*.pkl'):
-        if 'all_posts' in fn:
+    for fn in glob.glob(pattern):
+        if 'all_posts' in fn or 'dataset' in fn:
             continue
         posts = read_posts(filename=fn)
+        if scale:
+            posts = scale_posts_likes(posts)
+        if labels:
+            posts = add_labels(posts)
         result_posts.extend(posts)
 
     posts_count = len(result_posts)
     result_posts = drop_duplicates(result_posts)
-    filename = 'data/all_posts_filtered.pkl'
+    filename = 'data/dataset.pkl'
     with open(filename, 'wb') as f:
         pickle.dump(result_posts, f)
     logger.info('{} total posts added'.format(len(result_posts)))
@@ -179,7 +213,7 @@ def download_from_groups(domains):
         result_posts.extend(posts)
 
     posts_count = len(result_posts)
-    result_posts = drop_duplicates(result_posts)
+    result_posts = drop_duplicates(result_posts, False)
     filename = 'data/all_posts.pkl'
     with open(filename, 'wb') as f:
         pickle.dump(result_posts, f)
@@ -205,4 +239,4 @@ if __name__ == '__main__':
         # download_from_groups(config.DOMAINS)
         #  download_posts(config.DOMAINS[4], suffix='_2')
         # download_from_groups(config.DOMAINS)
-        drop_duplicates_in_files()
+        drop_duplicates_and_scale(scale=False)
